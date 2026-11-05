@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>飞书接入面板</title>
+<style>
+:root {
+  --bg: #f6f7f9; --card: #fff; --text: #1f2329; --muted: #646a73; --line: #e5e6eb;
+  --accent: #3370ff; --accent-weak: #e1eaff; --ok: #00a870; --ok-weak: #d9f5ea;
+  --warn: #c27c0e; --warn-weak: #fdf1d8; --bad: #d83931; --bad-weak: #fde2e2;
+  --code-bg: #f2f3f5; --shadow: 0 1px 2px rgba(0,0,0,.04), 0 2px 8px rgba(0,0,0,.04);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17181a; --card: #222326; --text: #e6e7ea; --muted: #9a9fa8; --line: #34363b;
+    --accent: #5b8cff; --accent-weak: #22305a; --ok: #34c08b; --ok-weak: #163a2d;
+    --warn: #e0a43a; --warn-weak: #3d2f15; --bad: #f0645c; --bad-weak: #44201f;
+    --code-bg: #2b2d31; --shadow: none;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.6 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif; }
+main { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
+header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+h1 { font-size: 20px; margin: 0; }
+h2 { font-size: 15px; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+.sub { color: var(--muted); font-size: 12px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px; margin-bottom: 16px; box-shadow: var(--shadow); }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.grid { display: grid; grid-template-columns: 1fr 1fr 140px; gap: 10px; }
+@media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+input, select { width: 100%; padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--text); font: inherit; }
+input:focus, select:focus { outline: 2px solid var(--accent-weak); border-color: var(--accent); }
+button { padding: 7px 14px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--text); font: inherit; cursor: pointer; white-space: nowrap; }
+button:hover { border-color: var(--accent); color: var(--accent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover { filter: brightness(1.08); color: #fff; }
+button.danger:hover { border-color: var(--bad); color: var(--bad); }
+button:disabled { opacity: .5; cursor: default; }
+header .pill { flex: none; white-space: nowrap; }
+.pill { display: inline-flex; align-items: center; gap: 5px; padding: 1px 9px; border-radius: 999px; font-size: 12px; background: var(--code-bg); color: var(--muted); }
+.pill.ok { background: var(--ok-weak); color: var(--ok); }
+.pill.warn { background: var(--warn-weak); color: var(--warn); }
+.pill.bad { background: var(--bad-weak); color: var(--bad); }
+.pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.session { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin-top: 10px; }
+.session.on { border-color: var(--ok); }
+.session .top { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+.session .name { font-weight: 600; word-break: break-all; }
+.session .path, #history .path { color: var(--muted); font-size: 12px; word-break: break-all; }
+.session .meta { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; }
+.switch { position: relative; width: 44px; height: 24px; flex: none; border-radius: 999px; background: var(--line); border: none; padding: 0; cursor: pointer; transition: background .15s; }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: left .15s; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+.switch.on { background: var(--ok); }
+.switch.on::after { left: 23px; }
+.switch:hover { filter: brightness(1.05); }
+.switch:disabled { opacity: .5; }
+.pair { margin-top: 12px; padding: 14px; border-radius: 8px; background: var(--accent-weak); }
+.pair .code { font: 600 30px/1.2 ui-monospace, Consolas, monospace; letter-spacing: 6px; color: var(--accent); user-select: all; }
+.notice { margin-top: 10px; padding: 8px 12px; border-radius: 6px; font-size: 13px; white-space: pre-wrap; }
+.notice.warn { background: var(--warn-weak); color: var(--warn); }
+.notice.bad { background: var(--bad-weak); color: var(--bad); }
+.notice.ok { background: var(--ok-weak); color: var(--ok); }
+ul.list { list-style: none; padding: 0; margin: 0 0 12px; }
+ul.list li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); }
+ul.list li:last-child { border-bottom: none; }
+code, .mono { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; }
+code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; word-break: break-all; }
+pre { background: var(--code-bg); padding: 10px 12px; border-radius: 6px; overflow-x: auto; margin: 6px 0; font-size: 12.5px; position: relative; }
+pre button { position: absolute; top: 6px; right: 6px; padding: 2px 8px; font-size: 12px; }
+.empty { color: var(--muted); padding: 14px 0 4px; }
+details summary { cursor: pointer; font-weight: 600; font-size: 15px; }
+details ol { padding-left: 20px; }
+details li { margin: 6px 0; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; margin: 6px 0; }
+td { border-bottom: 1px solid var(--line); padding: 5px 6px; vertical-align: top; }
+#toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 9px 16px; border-radius: 8px; background: var(--text); color: var(--bg); font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: calc(100% - 32px); }
+#toast.show { opacity: .95; }
+.spacer { flex: 1; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>飞书接入面板</h1>
+      <div class="sub" id="ver"></div>
+    </div>
+    <span class="pill" id="overall">读取中</span>
+  </header>
+
+  <section class="card">
+    <h2>Claude 会话 <span class="sub">打开开关，这个会话就开始收发飞书消息</span></h2>
+    <div id="sessions"><div class="empty">读取中…</div></div>
+  </section>
+
+  <section class="card">
+    <h2>连接历史 <span class="sub">连过飞书的会话，包括已经退出的</span><span class="spacer"></span><button id="histRefresh" style="padding:3px 10px;font-size:12px">刷新</button></h2>
+    <div id="history"><div class="empty">读取中…</div></div>
+  </section>
+
+  <section class="card">
+    <h2>应用凭据</h2>
+    <div class="grid">
+      <div><label for="appId">App ID</label><input id="appId" placeholder="cli_xxxxxxxx" autocomplete="off"></div>
+      <div><label for="appSecret">App Secret</label><input id="appSecret" type="password" autocomplete="new-password"></div>
+      <div><label for="domain">版本</label><select id="domain"><option value="feishu">飞书</option><option value="lark">Lark 国际版</option></select></div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="primary" id="saveCfg">保存</button>
+      <button id="checkCfg">测试凭据</button>
+      <span class="sub" id="cfgHint"></span>
+    </div>
+    <div id="cfgResult"></div>
+  </section>
+
+  <section class="card">
+    <h2>允许的飞书账号 <span class="sub">只有这些人的消息会进入会话，也只有他们能审批</span></h2>
+    <ul class="list" id="allow"></ul>
+    <div class="row">
+      <input id="allowInput" placeholder="ou_ 开头的 open_id（一般用配对码添加，不用手填）" style="flex:1;min-width:220px">
+      <button id="allowAdd">添加</button>
+    </div>
+    <div class="grid" style="margin-top:14px;grid-template-columns:1fr 1fr">
+      <div>
+        <label for="policy">陌生人私聊机器人时</label>
+        <select id="policy">
+          <option value="allowlist">直接忽略（推荐）</option>
+          <option value="pairing">回复配对码，在终端用 access pair 批准</option>
+          <option value="disabled">私聊全部忽略</option>
+        </select>
+      </div>
+      <div>
+        <label for="ack">收到消息时加的表情（飞书 emoji_type，留空关闭）</label>
+        <div class="row"><input id="ack" style="flex:1" placeholder="Typing"><button id="ackSave">保存</button></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>群聊 <span class="sub">默认只处理白名单成员 @机器人 的消息</span></h2>
+    <ul class="list" id="groups"></ul>
+    <div class="row">
+      <input id="groupInput" placeholder="oc_ 开头的群 chat_id" style="flex:1;min-width:220px">
+      <label class="row" style="margin:0;color:var(--text);font-size:13px;gap:4px"><input type="checkbox" id="noMention" style="width:auto"> 不 @ 也处理</label>
+      <button id="groupAdd">添加群</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <details id="guide">
+      <summary>首次设置指南</summary>
+      <ol>
+        <li>在 <a href="https://open.feishu.cn/app" target="_blank" rel="noopener">飞书开放平台</a> 创建<b>企业自建应用</b>，添加<b>机器人</b>能力，把 App ID / App Secret 填到上面并测试。</li>
+        <li>权限管理里开通：
+          <table>
+            <tr><td><code>im:message.p2p_msg:readonly</code></td><td>收私聊消息</td></tr>
+            <tr><td><code>im:message.group_at_msg:readonly</code></td><td>收群里 @机器人 的消息</td></tr>
+            <tr><td><code>im:message:readonly</code></td><td>读取被引用的消息</td></tr>
+            <tr><td><code>im:message:send_as_bot</code></td><td>发消息</td></tr>
+            <tr><td><code>im:message:update</code></td><td>编辑消息、更新审批卡片</td></tr>
+            <tr><td><code>im:message.reactions:write_only</code></td><td>"处理中"表情</td></tr>
+            <tr><td><code>im:resource</code></td><td>收发图片和文件</td></tr>
+          </table>
+        </li>
+        <li>事件与回调：事件和回调的订阅方式都选<b>长连接</b>；添加事件 <code>im.message.receive_v1</code>，添加回调 <code>card.action.trigger</code>。保存长连接时飞书要求有客户端在线：先在上面某个会话打开开关，再去保存。</li>
+        <li>发布应用版本。</li>
+        <li>在要让 Claude 干活的项目目录放一个 <code>.mcp.json</code>：
+          <pre id="mcpJson"></pre>
+        </li>
+        <li>在那个目录用下面的命令启动 Claude Code（普通启动收不到飞书消息）：
+          <pre>claude --dangerously-load-development-channels plugin:feishu@claude-channels</pre>
+        </li>
+        <li>在会话里说"连接飞书"，或者在本页打开那个会话的开关；按提示把配对码私聊发给机器人。</li>
+      </ol>
+    </details>
+  </section>
+</main>
+<div id="toast"></div>
+
+<script>
+const token = new URLSearchParams(location.search).get('t') || '';
+const $ = id => document.getElementById(id);
+const pairCodes = {}; // pid -> {code, until, notes}
+const errors = {};    // pid -> 上次操作的错误
+let state = null, busy = false;
+
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 3200);
+}
+async function api(path, body) {
+  const r = await fetch(path, {
+    method: body === undefined ? 'GET' : 'POST',
+    headers: { 'X-Panel-Token': token, 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = await r.json().catch(() => ({ error: '响应格式错误' }));
+  if (!r.ok) throw new Error(data.error || r.statusText);
+  return data;
+}
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function base(p) { const parts = String(p).split(/[\\/]/).filter(Boolean); return parts[parts.length - 1] || p; }
+function ago(t) {
+  const s = Math.max(0, (Date.now() - new Date(t)) / 1000);
+  if (s < 60) return '刚刚'; if (s < 3600) return Math.floor(s / 60) + ' 分钟前';
+  if (s < 86400) return Math.floor(s / 3600) + ' 小时前'; return Math.floor(s / 86400) + ' 天前';
+}
+
+function renderSessions() {
+  const box = $('sessions');
+  const list = state.sessions || [];
+  if (!list.length) {
+    box.innerHTML = `<div class="empty">没有发现正在运行的会话。在配好 <code>.mcp.json</code> 的项目目录里用
+      <code>claude --dangerously-load-development-channels plugin:feishu@claude-channels</code> 启动 Claude Code 后，这里会自动出现。</div>`;
+    return;
+  }
+  box.innerHTML = list.map(s => {
+    const on = s.active;
+    const conn = !on ? '<span class="pill">未连接</span>'
+      : s.ready ? `<span class="pill ok">已连接${s.botName ? ' · ' + esc(s.botName) : ''}</span>`
+      : '<span class="pill warn">连接中</span>';
+    const hub = on && s.hub && list.filter(x => x.active).length > 1
+      ? '<span class="pill" title="飞书消息先到这个会话，再按引用关系转给其他会话">负责接收</span>' : '';
+    const flag = { present: '<span class="pill ok">已带 channel 参数</span>',
+      missing: '<span class="pill bad">没带 channel 参数，收不到消息</span>',
+      unknown: '<span class="pill">无法确认启动参数</span>', checking: '<span class="pill">检查启动参数…</span>' }[s.channelFlag] || '';
+    const pc = pairCodes[s.pid];
+    let pair = '';
+    if (pc && pc.until > Date.now()) {
+      const left = Math.ceil((pc.until - Date.now()) / 1000);
+      pair = `<div class="pair"><div class="sub">用要绑定的飞书账号私聊机器人${s.botName ? '「' + esc(s.botName) + '」' : ''}，只发送这 6 个字符：</div>
+        <div class="code">${esc(pc.code)}</div>
+        <div class="sub">${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} 后失效，只能用一次</div></div>`;
+    }
+    const notes = (pc && pc.notes || []).map(n => `<div class="notice warn">${esc(n)}</div>`).join('')
+      + (errors[s.pid] ? `<div class="notice bad">${esc(errors[s.pid])}</div>` : '');
+    return `<div class="session ${on ? 'on' : ''}">
+      <div class="top">
+        <div style="min-width:0;flex:1">
+          <div class="name">${esc(s.title || base(s.cwd))}</div>
+          <div class="path">${esc(s.workDir || s.cwd)} · PID ${s.pid} · ${ago(s.started)}启动</div>
+          <div class="meta">${conn}${hub}${flag}<span class="pill">${esc({ desktop: '桌面 App', cli: '命令行', sdk: 'SDK' }[s.host] || '环境未知')}</span></div>
+        </div>
+        <div class="row">
+          ${on ? `<button data-pair="${s.pid}">生成配对码</button>` : ''}
+          <button class="switch ${on ? 'on' : ''}" data-toggle="${s.pid}" data-on="${on ? 1 : 0}" title="${on ? '断开飞书' : '连接飞书'}" aria-label="${on ? '断开飞书' : '连接飞书'}"></button>
+        </div>
+      </div>${notes}${pair}</div>`;
+  }).join('');
+}
+
+function renderAccess() {
+  const a = state.access;
+  $('allow').innerHTML = a.allowFrom.length
+    ? a.allowFrom.map(id => `<li><span class="mono">${esc(id)}</span><button class="danger" data-remove="${esc(id)}">移除</button></li>`).join('')
+    : '<li class="empty" style="border:none">还没有。打开某个会话的开关后会生成配对码，用飞书私聊机器人发送即可添加。</li>';
+  $('groups').innerHTML = a.groups && a.groups.length
+    ? a.groups.map(g => `<li><span><span class="mono">${esc(g.chatId)}</span> <span class="pill">${g.requireMention ? '需要 @' : '不 @ 也处理'}</span></span><button class="danger" data-group="${esc(g.chatId)}">移除</button></li>`).join('')
+    : '<li class="empty" style="border:none">没有允许的群。</li>';
+  if (document.activeElement !== $('policy')) $('policy').value = a.dmPolicy;
+  if (document.activeElement !== $('ack')) $('ack').value = a.ack;
+}
+
+function render() {
+  $('ver').textContent = `v${state.version} · 配置目录 ${state.stateDir}`;
+  const online = (state.sessions || []).filter(s => s.active);
+  const on = online.find(s => s.hub) || online[0];
+  const ov = $('overall');
+  ov.className = 'pill ' + (on ? (on.ready ? 'ok' : 'warn') : '');
+  ov.textContent = !on ? '飞书未连接' : !on.ready ? '正在连接…'
+    : online.length > 1 ? `飞书已连接：${online.length} 个会话（引用回复区分）` : '飞书已连接：' + base(on.cwd);
+  if (document.activeElement !== $('appId')) $('appId').value = state.config.appId || '';
+  if (document.activeElement !== $('domain')) $('domain').value = state.config.domain || 'feishu';
+  $('appSecret').placeholder = state.config.hasSecret ? '已保存，留空不改' : '';
+  $('cfgHint').textContent = state.config.appId ? '' : '还没填凭据';
+  const exe = state.exe || 'feishu-channel.exe';
+  $('mcpJson').innerHTML = '<button data-copy="mcpJson">复制</button>' + esc(JSON.stringify({ mcpServers: { feishu: { command: exe } } }, null, 2));
+  if (!state.config.appId) $('guide').open = true;
+  renderSessions(); renderAccess();
+}
+
+async function refresh() {
+  if (busy) return;
+  try { state = await api('/api/state'); render(); }
+  catch (e) { $('overall').className = 'pill bad'; $('overall').textContent = e.message; }
+}
+
+async function act(fn, okMsg) {
+  busy = true;
+  try { const r = await fn(); if (okMsg) toast(okMsg); busy = false; await refresh(); loadHistory(); return r; }
+  catch (e) { toast(e.message); busy = false; await refresh(); loadHistory(); }
+}
+
+document.addEventListener('click', async ev => {
+  const el = ev.target.closest('button'); if (!el) return;
+  if (el.dataset.toggle) {
+    const pid = +el.dataset.toggle, on = el.dataset.on === '1';
+    el.disabled = true;
+    delete errors[pid];
+    if (!on) toast('正在连接飞书…');
+    const r = await act(() => api('/api/session', { pid, cmd: on ? 'disconnect' : 'connect' })
+      .catch(e => { errors[pid] = e.message; throw e; }), on ? '已断开' : null);
+    if (r && !on) {
+      pairCodes[pid] = { code: r.pairCode, until: r.pairCode ? Date.now() + 600000 : 0, notes: r.notes || [] };
+      toast(r.pairCode ? '已连接，请用飞书发送配对码' : '已连接');
+      renderSessions();
+    }
+  } else if (el.dataset.pair) {
+    const pid = +el.dataset.pair;
+    const r = await act(() => api('/api/session', { pid, cmd: 'pair' }));
+    if (r) { pairCodes[pid] = { code: r.pairCode, until: Date.now() + 600000 }; renderSessions(); }
+  } else if (el.dataset.remove) {
+    if (confirm('移除 ' + el.dataset.remove + '？之后他的消息不会再进入会话。'))
+      act(() => api('/api/access', { op: 'remove', value: el.dataset.remove }), '已移除');
+  } else if (el.dataset.group) {
+    act(() => api('/api/access', { op: 'groupRemove', value: el.dataset.group }), '已移除');
+  } else if (el.dataset.resume !== undefined) {
+    const cmd = (history[+el.dataset.resume] || {}).resumeCmd || '';
+    navigator.clipboard.writeText(cmd).then(() => toast('已复制，粘贴到终端运行即可恢复这个会话'), () => toast('复制失败：' + cmd));
+  } else if (el.dataset.copy) {
+    const text = $(el.dataset.copy).textContent.replace(/^复制/, '');
+    navigator.clipboard.writeText(text).then(() => toast('已复制'), () => toast('复制失败，请手动选择'));
+  }
+});
+
+$('saveCfg').onclick = () => act(async () => {
+  await api('/api/config', { appId: $('appId').value, appSecret: $('appSecret').value, domain: $('domain').value });
+  $('appSecret').value = '';
+}, '已保存。已连接的会话需要断开再连接才会用新凭据');
+$('checkCfg').onclick = async () => {
+  $('cfgResult').innerHTML = '<div class="notice">测试中…</div>';
+  try {
+    const r = await api('/api/check', {});
+    $('cfgResult').innerHTML = `<div class="notice ok">凭据正常，机器人「${esc(r.botName)}」</div>`;
+  } catch (e) { $('cfgResult').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; }
+};
+$('allowAdd').onclick = () => act(async () => { await api('/api/access', { op: 'allow', value: $('allowInput').value }); $('allowInput').value = ''; }, '已添加');
+$('policy').onchange = () => act(() => api('/api/access', { op: 'policy', value: $('policy').value }), '已保存');
+$('ackSave').onclick = () => act(() => api('/api/access', { op: 'ack', value: $('ack').value }), '已保存');
+$('groupAdd').onclick = () => act(async () => {
+  await api('/api/access', { op: 'groupAdd', value: $('groupInput').value, noMention: $('noMention').checked });
+  $('groupInput').value = ''; $('noMention').checked = false;
+}, '已添加');
+
+// ---------------------------------------------------------------- 连接历史
+let history = [];
+const reasonText = { manual: '手动断开', takeover: '被别的会话接管', exit: '会话退出' };
+function when(t) { return t && !String(t).startsWith('0001') ? new Date(t).toLocaleString() : ''; }
+function renderHistory() {
+  const box = $('history');
+  if (!history.length) {
+    box.innerHTML = '<div class="empty">还没有连过飞书的会话。</div>';
+    return;
+  }
+  box.innerHTML = '<ul class="list">' + history.map((h, i) => {
+    const state = { online: '<span class="pill ok">正连着飞书</span>', open: '<span class="pill">会话开着</span>',
+      gone: '<span class="pill">已退出</span>' }[h.state] || '';
+    const host = `<span class="pill">${esc({ desktop: '桌面 App', cli: '命令行', sdk: 'SDK' }[h.host] || '环境未知')}</span>`;
+    const src = h.source === 'transcript' ? '<span class="pill warn" title="这个会话在连接历史功能上线前连过，从 Claude 对话记录里找到">来自对话记录</span>' : '';
+    const stats = h.source === 'log'
+      ? `连过 ${h.connects} 次 · 收到 ${h.messages} 条消息` + (h.lastReason && h.state !== 'online' ? ` · ${esc(reasonText[h.lastReason] || h.lastReason)}` : '')
+      : `调用过 ${h.connects} 次连接`;
+    let btn = '';
+    if (h.state === 'open') btn = `<button class="switch" data-toggle="${h.pid}" data-on="0" title="连接飞书" aria-label="连接飞书"></button>`;
+    else if (h.state === 'gone' && h.resumeCmd) btn = `<button data-resume="${i}" title="${esc(h.resumeCmd)}">复制恢复命令</button>`;
+    return `<li><div style="min-width:0;flex:1">
+        <div><b>${esc(base(h.cwd || '?'))}</b> <span class="mono sub">#${esc((h.claudeSession || '').slice(0, 8))}</span></div>
+        <div class="path">${esc(h.cwd || '')}</div>
+        <div class="meta" style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap">${state}${host}${src}
+          <span class="sub">最近连接 ${esc(when(h.lastConnected))} · ${stats}</span></div>
+      </div>${btn}</li>`;
+  }).join('') + '</ul>';
+}
+async function loadHistory() {
+  try { history = await api('/api/history') || []; renderHistory(); }
+  catch (e) { $('history').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; }
+}
+$('histRefresh').onclick = loadHistory;
+
+refresh();
+loadHistory();
+setInterval(refresh, 4000);
+setInterval(loadHistory, 15000);
+setInterval(() => { if (Object.values(pairCodes).some(p => p.until > Date.now())) renderSessions(); }, 1000);
+</script>
+</body>
+</html>

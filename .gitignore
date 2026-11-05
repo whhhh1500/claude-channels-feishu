@@ -1,0 +1,10 @@
+# 编译产物
+*.exe
+*.exe.old
+/plugin/server/
+
+# 本地 Go 编译缓存
+/.work/
+
+# 手动测试生成的文件
+/scripts/manual-test/test.txt

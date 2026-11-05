@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "feishu": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/server/feishu-channel"
+    }
+  }
+}

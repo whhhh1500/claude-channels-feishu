@@ -1,0 +1,54 @@
+{
+  "description": "飞书开关打开时，把授权请求、Claude 的选择题和计划确认转到飞书卡片，回合结束时把 Claude 写的 r📨 回复发到飞书，电脑上打的字提交时就同步到飞书私聊；开关关着时立即放行，照常在电脑上处理",
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/server/feishu-channel",
+            "args": ["hook"],
+            "timeout": 600
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/server/feishu-channel",
+            "args": ["hook"],
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/server/feishu-channel",
+            "args": ["hook"],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "AskUserQuestion|ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/server/feishu-channel",
+            "args": ["hook"],
+            "timeout": 600
+          }
+        ]
+      }
+    ]
+  }
+}

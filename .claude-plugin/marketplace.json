@@ -1,0 +1,12 @@
+{
+  "name": "claude-channels",
+  "description": "飞书等 IM 的 Claude Code Channel 插件",
+  "owner": { "name": "whhhh1500" },
+  "plugins": [
+    {
+      "name": "feishu",
+      "source": "./plugin",
+      "description": "飞书 Channel：在飞书里和正在运行的 Claude Code 会话双向聊天，远程审批，开关式连接"
+    }
+  ]
+}

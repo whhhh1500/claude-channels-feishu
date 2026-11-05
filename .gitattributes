@@ -1,0 +1,3 @@
+# 统一用 LF 换行：脚本在 Windows 上检出时也能直接用 bash 运行
+* text=auto eol=lf
+*.exe binary
