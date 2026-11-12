@@ -165,6 +165,55 @@ func TestReadLastTurnLongTurn(t *testing.T) {
 	}
 }
 
+// 提问和计划确认只在最近一次说话来自飞书时发卡片
+func TestLastInputFromFeishu(t *testing.T) {
+	ask := tAssistant("a9", "tool_use", map[string]any{"type": "tool_use", "name": "AskUserQuestion"})
+	cases := []struct {
+		name  string
+		lines []string
+		want  bool
+	}{
+		{"电脑上打字后提问", []string{tUser(feishuNote("oc_1", "om_1", "hi"), nil), tAssistant("a1", "end_turn", tText("r📨: hi")),
+			tUser("推测试服吧", nil), ask}, false},
+		{"飞书消息后提问", []string{tUser("电脑上的话", nil), tAssistant("a1", "end_turn", tText("好")),
+			tUser(feishuNote("oc_1", "om_2", "推吗"), nil), ask}, true},
+		{"后台通知开始的回合，最近说话来自飞书", []string{tUser(feishuNote("oc_1", "om_3", "跑一下"), nil), tAssistant("a1", "end_turn", tText("r📨: 在跑")),
+			tUser("<task-notification><status>completed</status></task-notification>", nil), ask}, true},
+	}
+	for _, c := range cases {
+		if got := lastInputFromFeishu(writeTranscript(t, c.lines...)); got != c.want {
+			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
+		}
+	}
+	if !lastInputFromFeishu("") { // 读不到记录：照旧发卡片
+		t.Error("empty path should default to feishu")
+	}
+}
+
+// 飞书连着时：选择框提问被拦下改成文字；计划确认在电脑上打字时留在电脑上；开关关着照常放行
+func TestQuestionAndPlanHooks(t *testing.T) {
+	b, _ := testBridge(t)
+	typed := writeTranscript(t, tUser("推测试服吧", nil),
+		tAssistant("a1", "tool_use", map[string]any{"type": "tool_use", "name": "AskUserQuestion"}))
+	hook := func(tool string) string {
+		raw, _ := json.Marshal(map[string]any{"hook_event_name": "PreToolUse", "tool_name": tool,
+			"tool_input": map[string]any{}, "transcript_path": typed})
+		return b.HandleHook(raw)
+	}
+	if out := hook("AskUserQuestion"); out != "" {
+		t.Fatalf("offline question should pass through: %s", out)
+	}
+	allowUser(t, b, "ou_user")
+	setOnline(b)
+	out := hook("AskUserQuestion")
+	if !strings.Contains(out, `"permissionDecision":"deny"`) || !strings.Contains(out, "编号") {
+		t.Fatalf("question not turned into text: %s", out)
+	}
+	if out := hook("ExitPlanMode"); out != "" {
+		t.Fatalf("plan after typed input should stay on computer: %s", out)
+	}
+}
+
 func TestStripContextBlocks(t *testing.T) {
 	in := "<artifact-view-context artifact=\"x\">\n{\"a\":1}\n<artifact-content-authored-by-others/>\n</artifact-view-context>\n\n链接飞书 <div>保留</div> <ide_selection>选中</ide_selection>"
 	if got := strings.TrimSpace(stripContextBlocks(in)); got != "链接飞书 <div>保留</div>" {

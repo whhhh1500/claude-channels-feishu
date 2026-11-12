@@ -521,3 +521,16 @@ func stripContextBlocks(text string) string {
 	}
 	return text
 }
+
+// lastInputFromFeishu 判断最近一次有人说话是不是来自飞书（后台任务通知不算）。
+// 读不到对话记录时按来自飞书处理，和没有这个判断时一样发卡片。
+func lastInputFromFeishu(path string) bool {
+	if path == "" {
+		return true
+	}
+	r, err := readLastTurn(path)
+	if err != nil {
+		return true
+	}
+	return r.chatID != ""
+}

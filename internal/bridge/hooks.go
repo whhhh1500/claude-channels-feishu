@@ -17,6 +17,9 @@ import (
 	"github.com/whhhh1500/claude-channels-feishu/internal/session"
 )
 
+// textQuestionHow 是飞书连着时拦下选择框提问后给 Claude 的说明。
+const textQuestionHow = "飞书已连接，不用选择框提问（选择框只能在电脑上答）。请把问题直接写在回答里：问题说清楚，选项编号列出并标出推荐的一项，然后结束这一回合等对方回复。对方在电脑上打字或在飞书回复都算回答，回一个编号也行。如果这一回合是飞书消息开始的，问题写进 r📨 段落。"
+
 type hookInput struct {
 	HookEventName      string          `json:"hook_event_name"`
 	ToolName           string          `json:"tool_name"`
@@ -94,6 +97,16 @@ func (b *Bridge) handleHook(ctx context.Context, raw json.RawMessage) string {
 	}
 	acc, err := b.access.Load()
 	if err != nil || len(acc.AllowFrom) == 0 {
+		return ""
+	}
+	// 提问和计划确认的 hook 不返回，电脑上就不弹框；放行之后飞书又答不了（授权不一样，两边同时有效）。
+	switch {
+	case kind == "question":
+		// 不用选择框，让 Claude 把问题写成文字：电脑上打字或飞书回复都算回答。
+		return hookJSON(map[string]any{"hookSpecificOutput": map[string]any{
+			"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": textQuestionHow}})
+	case kind == "plan" && !lastInputFromFeishu(in.TranscriptPath):
+		// 计划确认在最近说话的那一边问：在电脑上打字的就留在电脑上。
 		return ""
 	}
 
