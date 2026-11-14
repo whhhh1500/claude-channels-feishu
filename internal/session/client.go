@@ -103,13 +103,30 @@ const (
 	WaitNewMessage   = 0 // 有新消息：用 Monitor 重新启动监听
 	WaitDisconnected = 3 // 飞书已断开：什么都不用做
 	WaitNoServer     = 4 // 找不到本会话的飞书服务：什么都不用做
+	ListenNotMonitor = 5 // 不带 --wait 的 listen 没有在 Monitor 里运行
 )
+
+const listenNeedsMonitor = "飞书监听只能用 Monitor 工具启动（按 connect 返回的参数），不要用 Bash / PowerShell 直接运行 listen：" +
+	"命令行工具会把输出写进文件，进程不结束就不会通知，飞书消息都会收不到。没有新消息时不用手动去拉，消息到了 Monitor 会通知。"
+
+// isRegularFile 报告 f 是不是普通文件（不是管道、控制台）。
+func isRegularFile(f *os.File) bool {
+	st, err := f.Stat()
+	return err == nil && st.Mode().IsRegular()
+}
 
 // RunListen 是监听进程的入口，一直运行到被停掉。
 // wait=false：由 Monitor 工具启动，每条飞书消息打印一行（变成给 Claude 的通知）。
 // wait=true：空闲时由后台 Bash 启动，没有时间限制，有新消息（或飞书断开）时才退出，期间不调用模型。
 func RunListen(wait bool) int {
 	logf := func(format string, a ...any) { fmt.Fprintf(os.Stderr, "feishu listen: "+format+"\n", a...) }
+	// Monitor 的 stdout 是管道；Bash / PowerShell 工具（包括超时后被挪到后台的）写的是文件，
+	// 只在进程结束时通知一次。监听不会自己结束，消息就全写进没人看的文件里了，所以直接拒绝。
+	if !wait && isRegularFile(os.Stdout) {
+		fmt.Println(listenNeedsMonitor)
+		logf("stdout is a file, not started by Monitor; exiting")
+		return ListenNotMonitor
+	}
 	var deep []int
 	lastOK := time.Now()
 	for {

@@ -352,7 +352,7 @@ func monitorInstruction() string {
 		"- 一条都没有（0 events）：为了不每 30 分钟耗一次 token，改用 Bash 工具后台运行（run_in_background: true）等待命令，description 写\"等待飞书消息\"：\n"+
 		"  %s\n"+
 		"  它没有时间限制，期间不消耗 token，有新飞书消息时才结束。结束通知里 exit code 0 表示有新消息：立即用上面的参数重新启动 Monitor，消息会马上补发过来，不用读它的输出；其他 exit code 表示飞书已断开，什么都不用做。\n"+
-		"监听和等待命令都没运行时收到的消息会暂存，启动后补发。这些维护操作不用写任何文字。",
+		"监听和等待命令都没运行时收到的消息会暂存，启动后补发。不带 --wait 的监听命令只能放在 Monitor 里运行，不要用 Bash / PowerShell 直接跑它去拉消息（输出会进文件，消息就收不到了）。这些维护操作不用写任何文字。",
 		listenCommand(), listenCommand()+" --wait")
 }
 
