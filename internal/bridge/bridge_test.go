@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/whhhh1500/claude-channels-feishu/internal/config"
 	"github.com/whhhh1500/claude-channels-feishu/internal/feishu"
 	"github.com/whhhh1500/claude-channels-feishu/internal/hostinfo"
@@ -321,5 +323,60 @@ func TestMonitorLatestOnly(t *testing.T) {
 	h.publish("y")
 	if got := <-a; got != "y" {
 		t.Errorf("after newest left, older should receive, got %q", got)
+	}
+}
+
+// Monitor 的 ws 来源：口令不对被拒；连上后先补发暂存的消息，再收新消息；断开后退订。
+func TestListenWS(t *testing.T) {
+	b, _ := testBridge(t)
+	ctl, err := StartControl(b, b.log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctl.Close()
+	u := b.listenURL()
+	if !strings.HasPrefix(u, "ws://127.0.0.1:") || !strings.Contains(u, "token=") {
+		t.Fatalf("listen url = %q", u)
+	}
+	if !strings.Contains(b.monitorInstruction(), `"url": "`+u+`"`) {
+		t.Error("connect 说明里没有 ws 地址")
+	}
+
+	bad := u[:strings.Index(u, "token=")] + "token=nope"
+	if _, resp, err := websocket.DefaultDialer.Dial(bad, nil); err == nil || resp == nil || resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("bad token: resp=%v err=%v", resp, err)
+	}
+
+	b.setMode("monitor") // 监听没连上时暂存
+	b.monitors.publish(`飞书消息 {"text":"早到的"}`)
+	conn, _, err := websocket.DefaultDialer.Dial(u, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := func() string {
+		_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+		_, p, err := conn.ReadMessage()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(p)
+	}
+	if got := read(); got != `飞书消息 {"text":"早到的"}` {
+		t.Errorf("backlog frame = %q", got)
+	}
+	if !b.monitors.publish(`飞书消息 {"text":"新的"}`) {
+		t.Error("publish to ws subscriber failed")
+	}
+	if got := read(); got != `飞书消息 {"text":"新的"}` {
+		t.Errorf("live frame = %q", got)
+	}
+
+	conn.Close() // Monitor 到期
+	deadline := time.Now().Add(3 * time.Second)
+	for b.monitors.count() != 0 && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if n := b.monitors.count(); n != 0 {
+		t.Errorf("subscribers after close = %d", n)
 	}
 }

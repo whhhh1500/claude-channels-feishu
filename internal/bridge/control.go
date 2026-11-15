@@ -6,15 +6,19 @@ package bridge
 import (
 	"bufio"
 	"context"
+	"crypto/subtle"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/gorilla/websocket"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 	"github.com/whhhh1500/claude-channels-feishu/internal/hostinfo"
 	"github.com/whhhh1500/claude-channels-feishu/internal/session"
@@ -30,6 +34,8 @@ type Control struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	conns  map[net.Conn]struct{}
+
+	ws *http.Server // Monitor 的 ws 来源连的监听地址，见 startListenWS
 
 	flagMu sync.Mutex
 	flag   string
@@ -79,8 +85,77 @@ func StartControl(b *Bridge, log *slog.Logger) (*Control, error) {
 		_ = os.WriteFile(c.file, raw, 0o600)
 		log.Info("host detected", "host", host, "channel_flag", f)
 	}()
+	if err := c.startListenWS(); err != nil {
+		log.Warn("start ws listen", "err", err) // 退回用 listen 命令
+	}
 	go c.serve()
 	return c, nil
+}
+
+// startListenWS 开一个本机 WebSocket 地址，给 Monitor 工具的 ws 来源直接连：
+// 不经过 bash，不受 shell 环境、路径引号、命令被挪到后台这些问题影响。每个文本帧是一条通知。
+func (c *Control) startListenWS() error {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return err
+	}
+	token := session.RandomToken()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/listen", func(w http.ResponseWriter, r *http.Request) {
+		if subtle.ConstantTimeCompare([]byte(r.URL.Query().Get("token")), []byte(token)) != 1 {
+			http.Error(w, "口令错误", http.StatusForbidden)
+			return
+		}
+		c.serveListenWS(w, r)
+	})
+	c.ws = &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	c.b.setListenURL(fmt.Sprintf("ws://127.0.0.1:%d/listen?token=%s", l.Addr().(*net.TCPAddr).Port, token))
+	go func() { _ = c.ws.Serve(l) }()
+	return nil
+}
+
+// 默认的来源检查会拒绝带了别的网站 Origin 的浏览器连接；Monitor 不带 Origin。
+var wsUpgrader = websocket.Upgrader{}
+
+func (c *Control) serveListenWS(w http.ResponseWriter, r *http.Request) {
+	conn, err := wsUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+	closed := make(chan struct{})
+	go func() { // 读出错说明 Monitor 到期或被停掉，连接断了
+		for {
+			if _, _, err := conn.NextReader(); err != nil {
+				close(closed)
+				return
+			}
+		}
+	}()
+	c.pump("ws", closed, func(line string) error {
+		_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+		return conn.WriteMessage(websocket.TextMessage, []byte(line))
+	})
+}
+
+// pump 订阅飞书消息，逐条交给 write，直到对方断开或服务关闭。
+func (c *Control) pump(via string, closed <-chan struct{}, write func(string) error) {
+	ch := c.b.monitors.add()
+	defer c.b.monitors.remove(ch)
+	c.log.Info("monitor subscribed", "via", via)
+	defer c.log.Info("monitor unsubscribed", "via", via)
+	for {
+		select {
+		case line := <-ch:
+			if err := write(line); err != nil {
+				return
+			}
+		case <-closed:
+			return
+		case <-c.ctx.Done():
+			return
+		}
+	}
 }
 
 func (c *Control) Close() {
@@ -89,6 +164,9 @@ func (c *Control) Close() {
 	c.closed = true
 	c.cancel()
 	c.l.Close()
+	if c.ws != nil {
+		_ = c.ws.Close() // 已升级的连接由 pump 看到 ctx 取消后关掉
+	}
 	for conn := range c.conns {
 		conn.Close()
 	}
@@ -198,9 +276,6 @@ func (c *Control) handle(conn net.Conn) {
 // subscribe 是监听进程（feishu-channel listen）的长连接：每条飞书消息一行。对方断开就退订。
 func (c *Control) subscribe(conn net.Conn, rd *bufio.Reader) {
 	_ = conn.SetDeadline(time.Time{})
-	ch := c.b.monitors.add()
-	defer c.b.monitors.remove(ch)
-	c.log.Info("monitor subscribed")
 	closed := make(chan struct{})
 	go func() { // 读到 EOF 说明 Monitor 退出了
 		_, _ = rd.ReadString('\n')
@@ -209,18 +284,11 @@ func (c *Control) subscribe(conn net.Conn, rd *bufio.Reader) {
 	if _, err := conn.Write([]byte("{\"ok\":true}\n")); err != nil {
 		return
 	}
-	for {
-		select {
-		case line := <-ch:
-			_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			if _, err := conn.Write([]byte(line + "\n")); err != nil {
-				return
-			}
-		case <-closed:
-			c.log.Info("monitor unsubscribed")
-			return
-		}
-	}
+	c.pump("listen", closed, func(line string) error {
+		_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+		_, err := conn.Write([]byte(line + "\n"))
+		return err
+	})
 }
 
 func (c *Control) exec(cmd string) session.Response {

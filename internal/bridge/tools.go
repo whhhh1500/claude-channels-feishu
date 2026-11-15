@@ -335,7 +335,7 @@ func (b *Bridge) toolConnect(ctx context.Context) mcp.Result {
 		msg += fmt.Sprintf("已配对 %d 个飞书账号，直接在飞书里发消息就行。要再绑定一个账号就说\"生成飞书配对码\"。", r.Paired)
 	}
 	if r.NeedMonitor {
-		msg += "\n\n" + monitorInstruction()
+		msg += "\n\n" + b.monitorInstruction()
 	}
 	for _, n := range r.Notes {
 		msg += "\n注意：" + n
@@ -344,16 +344,25 @@ func (b *Bridge) toolConnect(ctx context.Context) mcp.Result {
 }
 
 // monitorInstruction 告诉 Claude 用内置 Monitor 工具启动飞书监听（没带 channel 参数的会话）。
-func monitorInstruction() string {
-	return fmt.Sprintf("还差一步：飞书监听只在连接时启动。请立即调用 Monitor 工具启动监听，参数：\n"+
-		"- command: %s\n- description: 飞书消息\n- timeout_ms: 1800000\n"+
-		"之后每条飞书消息会以\"飞书消息 {...}\"的通知到达。监听每 30 分钟到期一次，到期通知里会写这期间收到了几条（N events）。只要飞书还连着：\n"+
-		"- 收到过消息（N 大于 0）：用同样的参数重新启动 Monitor。\n"+
-		"- 一条都没有（0 events）：为了不每 30 分钟耗一次 token，改用 Bash 工具后台运行（run_in_background: true）等待命令，description 写\"等待飞书消息\"：\n"+
-		"  %s\n"+
-		"  它没有时间限制，期间不消耗 token，有新飞书消息时才结束。结束通知里 exit code 0 表示有新消息：立即用上面的参数重新启动 Monitor，消息会马上补发过来，不用读它的输出；其他 exit code 表示飞书已断开，什么都不用做。\n"+
-		"监听和等待命令都没运行时收到的消息会暂存，启动后补发。不带 --wait 的监听命令只能放在 Monitor 里运行，不要用 Bash / PowerShell 直接跑它去拉消息（输出会进文件，消息就收不到了）。这些维护操作不用写任何文字。",
-		listenCommand(), listenCommand()+" --wait")
+// 有 ws 地址时用 Monitor 的 ws 来源直接连插件，不经过 shell；没有时退回 listen 命令。
+func (b *Bridge) monitorInstruction() string {
+	var start string
+	if u := b.listenURL(); u != "" {
+		start = fmt.Sprintf("- ws: {\"url\": \"%s\"}（填 ws，不要填 command：这个本机地址直接连插件，不经过 shell）\n"+
+			"- description: 飞书消息\n- timeout_ms: 1800000\n"+
+			"如果 Monitor 工具不支持 ws 参数，改填 command: %s（这条命令只能放在 Monitor 里运行）。\n", u, listenCommand())
+	} else {
+		start = fmt.Sprintf("- command: %s\n- description: 飞书消息\n- timeout_ms: 1800000\n", listenCommand())
+	}
+	return "还差一步：飞书监听只在连接时启动。请立即调用 Monitor 工具启动监听，参数：\n" + start +
+		"之后每条飞书消息会以\"飞书消息 {...}\"的通知到达。监听每 30 分钟到期一次，到期通知里会写这期间收到了几条（N events）。只要飞书还连着：\n" +
+		"- 收到过消息（N 大于 0）：用同样的参数重新启动 Monitor。\n" +
+		"- 一条都没有（0 events）：为了不每 30 分钟耗一次 token，改为后台运行等待命令（run_in_background: true，description 写\"等待飞书消息\"），Bash 工具：\n" +
+		"  " + listenCommand() + " --wait\n" +
+		"  或 PowerShell 工具：& '" + exePath() + "' listen --wait\n" +
+		"  它没有时间限制，期间不消耗 token，有新飞书消息时才结束。结束通知里 exit code 0 表示有新消息：立即用上面的参数重新启动 Monitor，消息会马上补发过来，不用读它的输出；其他 exit code 表示飞书已断开，什么都不用做。" +
+		"如果等待命令启动不了（shell 报错），就直接用上面的参数重新启动 Monitor。\n" +
+		"监听和等待命令都没运行时收到的消息会暂存，启动后补发。不要用 Bash / PowerShell 运行不带 --wait 的监听命令去拉消息（输出会进文件，消息就收不到了）。这些维护操作不用写任何文字。"
 }
 
 func (b *Bridge) statusLine() string {

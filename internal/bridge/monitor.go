@@ -180,15 +180,20 @@ func (b *Bridge) notify(text string, meta map[string]string) {
 
 // listenCommand 是让 Claude 用 Monitor 工具启动监听时的命令。
 func listenCommand() string {
-	exe, err := os.Executable()
-	if err != nil {
-		return "feishu-channel listen"
-	}
-	exe = filepath.ToSlash(exe)
+	exe := exePath()
 	if strings.Contains(exe, " ") {
 		exe = `"` + exe + `"`
 	}
 	return exe + " listen"
+}
+
+// exePath 是本程序的路径（正斜杠，不加引号）。
+func exePath() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return "feishu-channel"
+	}
+	return filepath.ToSlash(exe)
 }
 
 // waitMonitor 等 Monitor 连上来（会话刚启动时它可能还在找服务）。

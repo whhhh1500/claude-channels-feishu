@@ -196,7 +196,7 @@ alias claude-feishu='FEISHU_AUTOCONNECT=1 claude --dangerously-load-development-
 ./plugin/server/feishu-channel version
 ```
 
-`listen` 和 `hook` 两个子命令是给插件内部用的，不用手动运行。
+`listen` 和 `hook` 两个子命令是给插件内部用的，不用手动运行。不带 `--wait` 的 `listen` 只能在 Monitor 里运行：用 Bash / PowerShell 工具直接跑时它会立即退出（退出码 5），因为那样输出会写进文件，消息没人收。
 
 ## 环境变量
 
@@ -236,7 +236,7 @@ alias claude-feishu='FEISHU_AUTOCONNECT=1 claude --dangerously-load-development-
 普通命令行和桌面 App 靠 Claude 用 Monitor 工具启动的监听收消息。Monitor 最长运行 30 分钟，到期后只有 Claude 能重新启动它，每次要调用 2 次模型。插件的做法：
 
 - **这 30 分钟里收到过消息**：重启监听，2 次调用，按缓存价约 0.2 份上下文。
-- **一条都没收到**：Claude 改用后台等待命令 `feishu-channel listen --wait`。它没有时间上限，等待期间不调用模型。这次切换同样是 2 次调用。
+- **一条都没收到**：Claude 改用后台等待命令 `feishu-channel listen --wait`（Bash 或 PowerShell 工具都行）。它没有时间上限，等待期间不调用模型。这次切换同样是 2 次调用。
 - **等待期间来了飞书消息**：等待命令结束，Claude 重启监听，暂存的消息马上补发。多 2 次调用，回复晚几秒到十几秒；飞书上的"敲键盘"表情会立刻加上。
 
 举例：一个上下文约 34 万 token 的会话，聊天活跃时每 30 分钟维护一次，约 68 万 token（按缓存价计）；空闲下来切换一次后，就不再消耗。
@@ -324,7 +324,7 @@ scripts/build.sh                  编译到 plugin/server/
 
 实现细节：
 
-- 收消息：带 channel 参数启动时，程序通过 MCP 的 Channel 通知把消息推进会话；不带参数时，连接时让 Claude 用 Monitor 工具运行 `feishu-channel listen`，每条飞书消息是一行输出；监听到期时如果这段时间没有消息，Claude 改用后台 Bash 运行 `feishu-channel listen --wait`，它挂在控制端口上等到有暂存消息才退出（退出码 0；飞书断开时是 3），Claude 再启动 Monitor，暂存的消息随即补发。程序看拉起它的 Claude 进程的命令行来判断是哪种情况，以及是桌面端、命令行还是 SDK。
+- 收消息：带 channel 参数启动时，程序通过 MCP 的 Channel 通知把消息推进会话；不带参数时，连接时让 Claude 用 Monitor 工具的 `ws` 来源连本会话程序开的本机 WebSocket 地址（`ws://127.0.0.1:<随机端口>/listen?token=<随机口令>`），每条飞书消息是一个文本帧。这条路不经过 shell，本机 bash 环境出问题时也能收消息；Monitor 不支持 `ws` 时退回用 Monitor 运行 `feishu-channel listen`，每条消息是一行输出。监听到期时如果这段时间没有消息，Claude 改用后台 Bash 或 PowerShell 运行 `feishu-channel listen --wait`，它挂在控制端口上等到有暂存消息才退出（退出码 0；飞书断开时是 3），Claude 再启动 Monitor，暂存的消息随即补发。程序看拉起它的 Claude 进程的命令行来判断是哪种情况，以及是桌面端、命令行还是 SDK。
 - 多会话：飞书长连接每条事件只推给一个连接，所以第一个连上的会话拿到本机锁（`127.0.0.1:47831`）负责接收，再通过各会话的本机控制端口问"这条引用的是不是你的消息"并转过去。它退出后其他在线会话 2 秒内接手。
 - 同步：Stop hook 在回合结束时读这一回合的对话记录，发出 r📨 段落或最终回答；UserPromptSubmit hook 在你提交时把打的字发到飞书私聊。
 

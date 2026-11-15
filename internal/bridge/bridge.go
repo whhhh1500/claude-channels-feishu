@@ -66,6 +66,19 @@ type Bridge struct {
 	stopHook   bool                    // 收到过 Stop hook：说明回合结束自动发 r📨 段落能用
 	msgs       msgCounter              // 本次连接转给 Claude 的消息数（记进连接历史）
 	mode       string                  // 本次连接收消息的方式：channel / monitor
+	listenWS   string                  // Monitor 的 ws 来源连的地址（带口令），空表示没开
+}
+
+func (b *Bridge) setListenURL(u string) {
+	b.mu.Lock()
+	b.listenWS = u
+	b.mu.Unlock()
+}
+
+func (b *Bridge) listenURL() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.listenWS
 }
 
 // New 创建桥接。srv 是本会话的 MCP 服务，飞书消息通过它推给 Claude。
