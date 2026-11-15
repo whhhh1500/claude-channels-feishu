@@ -58,15 +58,15 @@ type Bridge struct {
 	flagKnown   bool
 	host        string
 
-	monitors   monitorHub              // Monitor 监听的订阅（没有 channel 参数时用它投递）
-	hooks      map[string]*hookRequest // 等待飞书回复的 hook 审批
-	hookSeen   bool                    // 收到过 PermissionRequest hook：说明插件 hook 在工作，Channel 自带的审批转发就不用了
-	lastTurnID string                  // 上次回合结束时发过的最后一条 assistant 记录，防止重复发
-	echo       *promptEcho             // 电脑上提交时已发到飞书的"💻 打的字"，等回合结束引用它发回答
-	stopHook   bool                    // 收到过 Stop hook：说明回合结束自动发 r📨 段落能用
-	msgs       msgCounter              // 本次连接转给 Claude 的消息数（记进连接历史）
-	mode       string                  // 本次连接收消息的方式：channel / monitor
-	listenWS   string                  // Monitor 的 ws 来源连的地址（带口令），空表示没开
+	monitors monitorHub              // Monitor 监听的订阅（没有 channel 参数时用它投递）
+	hooks    map[string]*hookRequest // 等待飞书回复的 hook 审批
+	hookSeen bool                    // 收到过 PermissionRequest hook：说明插件 hook 在工作，Channel 自带的审批转发就不用了
+	mirror   *syncer                 // 跟读对话记录，把电脑上的内容同步到飞书
+	msgs     msgCounter              // 本次连接转给 Claude 的消息数（记进连接历史）
+	mode     string                  // 本次连接收消息的方式：channel / monitor
+	listenWS string                  // Monitor 的 ws 来源连的地址（带口令），空表示没开
+	onExit   func()                  // shutdown 工具关闭进程时调用
+	restart  *restartMark            // 上次关闭插件时留下的记录：连回飞书、沿用监听地址
 }
 
 func (b *Bridge) setListenURL(u string) {
@@ -96,9 +96,13 @@ func New(cfg *config.Config, log *slog.Logger, fs *feishu.Client, srv *mcp.Serve
 		pending:    map[string]*pendingRoute{},
 	}
 	b.conn = NewConnector(log, b)
+	b.mirror = newSyncer(b)
 	go transcript.sessionInfo() // 先把对话记录读一遍，第一次回复和面板查询就不用等
 	return b
 }
+
+// StartSync 开始跟读对话记录：连着飞书时把电脑上的内容同步过去。
+func (b *Bridge) StartSync() { go b.mirror.run() }
 
 // AutoConnect 会话启动时直接连接飞书（FEISHU_AUTOCONNECT）。
 // 只在带 channel 参数启动时生效：没带参数时消息要靠 Claude 在会话里启动的监听接收，
@@ -442,13 +446,8 @@ func (b *Bridge) handleMessage(ev *larkim.P2MessageReceiveV1) {
 	if strings.TrimSpace(text) == "" {
 		text = "(空消息)"
 	}
-	b.mu.Lock()
-	stopHook := b.stopHook
-	b.mu.Unlock()
-	if stopHook {
-		// 每条消息都带上回复方式：会话历史里旧的做法很多时，光靠开头的说明 Claude 常常照着历史来
-		meta["reply_how"] = replyHow
-	}
+	// 每条消息都带上回复方式：会话历史里旧的做法很多时，光靠开头的说明 Claude 常常照着历史来
+	meta["reply_how"] = replyHow
 	b.deliver(feishu.Truncate(text, 100000), meta)
 	b.log.Info("forwarded message", "chat_id", chatID, "message_id", msgID, "type", msgType)
 }

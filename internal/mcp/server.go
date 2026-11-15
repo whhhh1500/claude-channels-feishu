@@ -199,7 +199,7 @@ func (s *Server) dispatch(msg rpcMessage) {
 					"claude/channel":            map[string]any{},
 					"claude/channel/permission": map[string]any{},
 				},
-				"tools": map[string]any{},
+				"tools": map[string]any{"listChanged": true},
 			},
 			"serverInfo":   map[string]string{"name": s.Name, "version": s.Version},
 			"instructions": s.Instructions,
@@ -235,7 +235,11 @@ func (s *Server) dispatch(msg rpcMessage) {
 		if s.OnPermissionRequest != nil {
 			go s.OnPermissionRequest(p)
 		}
-	case "notifications/initialized", "notifications/cancelled":
+	case "notifications/initialized":
+		// 插件进程退出后 Claude Code 会在下次调用时自动拉起新程序，但沿用旧的工具列表（实测）。
+		// 连上就通知一次"工具列表变了"，让它重新取，换了新程序也能看到新工具。
+		s.Notify("notifications/tools/list_changed", map[string]any{})
+	case "notifications/cancelled":
 		// 不需要处理
 	default:
 		if isRequest {

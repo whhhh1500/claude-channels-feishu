@@ -222,11 +222,55 @@ func RunHook() int {
 		return 0
 	}
 	var resp Response
-	if json.Unmarshal([]byte(line), &resp) != nil || resp.Output == "" {
+	if json.Unmarshal([]byte(line), &resp) != nil {
 		return 0
 	}
-	fmt.Fprint(os.Stdout, resp.Output)
+	if resp.Output != "" {
+		fmt.Fprint(os.Stdout, resp.Output)
+		return 0
+	}
+	// 你在电脑上提交消息时，顺带看本会话的插件进程是不是比磁盘上的程序旧（hook 每次都跑最新的程序）
+	var ev struct {
+		Name string `json:"hook_event_name"`
+	}
+	if json.Unmarshal(in, &ev) == nil && ev.Name == "UserPromptSubmit" {
+		if note := outdatedNote(info); note != "" {
+			out, _ := json.Marshal(map[string]any{"hookSpecificOutput": map[string]any{
+				"hookEventName": "UserPromptSubmit", "additionalContext": note}})
+			fmt.Fprint(os.Stdout, string(out))
+		}
+	}
 	return 0
+}
+
+// outdatedNote 本会话连着飞书、插件进程又比磁盘上的程序旧时，返回给 Claude 的提示；否则为空。
+func outdatedNote(info *Info) string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	st, err := os.Stat(exe)
+	if err != nil || !st.ModTime().After(info.Started.Add(2*time.Second)) {
+		return ""
+	}
+	if r, err := Call(info, "status", 2*time.Second); err != nil || r.Status == nil || !r.Status.Active {
+		return "" // 没连飞书的会话不打扰，下次重开会话自然用上新程序
+	}
+	if canShutdown(info.Version) {
+		return "飞书插件有新编译的版本，本会话的插件进程还是旧的。回答完用户这条消息后，按 /feishu:restart 的步骤重启飞书插件（shutdown 工具关闭插件，再调用一次 status 让它用新程序拉起），不用重开会话，也不用问用户。"
+	}
+	// 旧插件没有 shutdown 工具，只能请用户手动重连；同一个进程只提醒一次
+	mark := filepath.Join(os.TempDir(), fmt.Sprintf("feishu-channel-outdated-%d-%d", info.PID, st.ModTime().Unix()))
+	if _, err := os.Stat(mark); err == nil {
+		return ""
+	}
+	_ = os.WriteFile(mark, nil, 0o600)
+	return "飞书插件有新编译的版本，但本会话正在运行的插件太旧，不能自己重启。回答完用户这条消息后，用一句话提醒用户：在本会话输入 /mcp 重连 plugin:feishu:feishu（或重开会话），然后说\"连接飞书\"。"
+}
+
+// canShutdown 报告这个版本的插件有没有 shutdown 工具（0.3.0 起）。
+func canShutdown(v string) bool {
+	return v != "" && !strings.HasPrefix(v, "0.1.") && !strings.HasPrefix(v, "0.2.")
 }
 
 const HookWait = 9*time.Minute + 30*time.Second // hook 超时设为 600 秒，留点余量

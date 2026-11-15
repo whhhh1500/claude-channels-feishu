@@ -18,7 +18,7 @@ import (
 )
 
 // textQuestionHow 是飞书连着时拦下选择框提问后给 Claude 的说明。
-const textQuestionHow = "飞书已连接，不用选择框提问（选择框只能在电脑上答）。请把问题直接写在回答里：问题说清楚，选项编号列出并标出推荐的一项，然后结束这一回合等对方回复。对方在电脑上打字或在飞书回复都算回答，回一个编号也行。如果这一回合是飞书消息开始的，问题写进 r📨 段落。"
+const textQuestionHow = "飞书已连接，不用选择框提问（选择框只能在电脑上答）。请把问题直接写在回答里：问题说清楚，选项编号列出并标出推荐的一项，然后结束这一回合等对方回复。你写的文字会同步到飞书，对方在电脑上打字或在飞书回复都算回答，回一个编号也行。"
 
 type hookInput struct {
 	HookEventName      string          `json:"hook_event_name"`
@@ -29,7 +29,6 @@ type hookInput struct {
 	Cwd                string          `json:"cwd"`
 	PermissionMode     string          `json:"permission_mode"`
 	TranscriptPath     string          `json:"transcript_path"`
-	Prompt             string          `json:"prompt"`
 }
 
 type askQuestion struct {
@@ -64,17 +63,9 @@ func (b *Bridge) handleHook(ctx context.Context, raw json.RawMessage) string {
 	if err := json.Unmarshal(raw, &in); err != nil {
 		return ""
 	}
-	if in.HookEventName == "Stop" {
-		// 回合结束：把 r📨 段落发到飞书。后台发，不耽误 Claude。
-		b.mu.Lock()
-		b.stopHook = true
-		b.mu.Unlock()
-		go b.onTurnEnd(in.TranscriptPath)
-		return ""
-	}
-	if in.HookEventName == "UserPromptSubmit" {
-		// 电脑上打的字立刻同步到飞书（发送在后台进行）
-		b.onPromptSubmit(in.Prompt)
+	// 每个 hook 都带着对话记录的路径：同步跟读它（/clear 之后会换文件）
+	b.mirror.setHint(in.TranscriptPath)
+	if in.HookEventName == "Stop" || in.HookEventName == "UserPromptSubmit" {
 		return ""
 	}
 	kind := ""
@@ -105,7 +96,7 @@ func (b *Bridge) handleHook(ctx context.Context, raw json.RawMessage) string {
 		// 不用选择框，让 Claude 把问题写成文字：电脑上打字或飞书回复都算回答。
 		return hookJSON(map[string]any{"hookSpecificOutput": map[string]any{
 			"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": textQuestionHow}})
-	case kind == "plan" && !lastInputFromFeishu(in.TranscriptPath):
+	case kind == "plan" && !b.mirror.fromFeishu():
 		// 计划确认在最近说话的那一边问：在电脑上打字的就留在电脑上。
 		return ""
 	}

@@ -45,7 +45,14 @@ func TestMCPProtocol(t *testing.T) {
 	if _, ok := exp["claude/channel/permission"]; !ok {
 		t.Error("missing permission capability")
 	}
+	if caps["tools"].(map[string]any)["listChanged"] != true {
+		t.Error("tools.listChanged not declared")
+	}
 	send(`{"jsonrpc":"2.0","method":"notifications/initialized"}`)
+	// 连上就通知工具列表变了，换了新程序的插件被自动拉起后客户端会重新取
+	if n := recv(); n["method"] != "notifications/tools/list_changed" {
+		t.Errorf("after initialized = %v", n)
+	}
 	send(`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
 	list := recv()
 	if n := len(list["result"].(map[string]any)["tools"].([]any)); n != len(testTools) {

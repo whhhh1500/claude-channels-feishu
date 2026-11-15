@@ -66,6 +66,8 @@ func runServer() error {
 	br := bridge.New(cfg, log, feishu.New(cfg, log), srv)
 	srv.CallTool = br.CallTool
 	srv.OnPermissionRequest = br.OnPermissionRequest
+	br.StartSync()
+	br.LoadRestart() // 被 Claude 重新拉起时：沿用原来的监听地址，随后连回飞书
 
 	// 本会话的控制端口，网页面板、插件 hook 和监听进程通过它找到本会话。
 	ctl, err := bridge.StartControl(br, log)
@@ -73,6 +75,16 @@ func runServer() error {
 		log.Warn("控制端口启动失败，网页面板和 hook 无法操作本会话", "err", err)
 	} else {
 		defer ctl.Close()
+	}
+	// shutdown 工具：关掉控制端口（删登记文件）后退出，Claude 再用 reconnect 拉起新程序
+	br.SetOnExit(func() {
+		if ctl != nil {
+			ctl.Close()
+		}
+		os.Exit(0)
+	})
+	if cfgErr == nil {
+		go br.ResumeAfterRestart(context.Background())
 	}
 
 	if os.Getenv("FEISHU_AUTOCONNECT") != "" && cfgErr == nil {

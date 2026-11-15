@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -95,11 +96,21 @@ func StartControl(b *Bridge, log *slog.Logger) (*Control, error) {
 // startListenWS 开一个本机 WebSocket 地址，给 Monitor 工具的 ws 来源直接连：
 // 不经过 bash，不受 shell 环境、路径引号、命令被挪到后台这些问题影响。每个文本帧是一条通知。
 func (c *Control) startListenWS() error {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return err
+	// 插件重启后尽量沿用原来的地址和口令，Claude 用原来的 Monitor 参数就能连上
+	var l net.Listener
+	token := ""
+	if u, err := url.Parse(c.b.restartListen()); err == nil && u.Host != "" && u.Query().Get("token") != "" {
+		if l, err = net.Listen("tcp", u.Host); err == nil {
+			token = u.Query().Get("token")
+		}
 	}
-	token := session.RandomToken()
+	if l == nil {
+		var err error
+		if l, err = net.Listen("tcp", "127.0.0.1:0"); err != nil {
+			return err
+		}
+		token = session.RandomToken()
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/listen", func(w http.ResponseWriter, r *http.Request) {
 		if subtle.ConstantTimeCompare([]byte(r.URL.Query().Get("token")), []byte(token)) != 1 {

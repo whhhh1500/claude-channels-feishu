@@ -47,13 +47,27 @@ func (t *transcriptState) sessionInfo() (title, cwd string) {
 	return t.title, t.cwd
 }
 
-func (t *transcriptState) refresh() {
-	if t.path == "" {
-		matches, _ := filepath.Glob(filepath.Join(session.ProjectsDir(), "*", t.id+".jsonl"))
-		if len(matches) == 0 {
-			return
-		}
+// filePath 返回本会话对话记录的路径（按会话 ID 找；找不到时为空）。
+func (t *transcriptState) filePath() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.locate()
+	return t.path
+}
+
+func (t *transcriptState) locate() {
+	if t.path != "" || t.id == "" {
+		return
+	}
+	if matches, _ := filepath.Glob(filepath.Join(session.ProjectsDir(), "*", t.id+".jsonl")); len(matches) > 0 {
 		t.path = matches[0]
+	}
+}
+
+func (t *transcriptState) refresh() {
+	t.locate()
+	if t.path == "" {
+		return
 	}
 	f, err := os.Open(t.path)
 	if err != nil {
